@@ -1,0 +1,22 @@
+{
+    "name": "hyperledger-rest-apis",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Provides REST APIs (CRUD) to communicate with smart contracts deployed on local hyperledger fabric (microfab)",
+    "scripts": {
+        "start": "node app.js"
+    },
+    "engines": {
+        "node": ">=12",
+        "npm": ">=5"
+    },
+    "engineStrict": true,
+    "author": "Vaibhav Singh",
+    "dependencies": {
+        "fabric-ca-client": "2.2.2",
+        "fabric-network": "2.2.2",
+        "fastify": "^4.27.0",
+        "jquery": "^3.6.0",
+        "url": "^0.11.0"
+    }
+}

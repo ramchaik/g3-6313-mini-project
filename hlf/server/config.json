@@ -1,0 +1,8 @@
+{
+  "CONTRACT_NAME": "cryptoart",
+  "CHANNEL_NAME": "vaibhavchannel",
+  "walletPath": "./Org1",
+  "host": "localhost",
+  "port": 8000,
+  "identity": "Org1 Admin"
+}
