@@ -4,49 +4,82 @@ import { useForm } from 'react-hook-form';
 import { create } from 'ipfs-http-client';
 import { useWeb3 } from '../context/Web3Context';
 
-const ipfs = create('http://127.0.0.1:5001'); // Using Infura as the IPFS gateway
+const ipfs = create({ url: 'http://127.0.0.1:5001' }); // Using local IPFS node
 
 const CreateProject = () => {
   const { register, handleSubmit, formState: { errors }, setValue } = useForm();
   const [formData, setFormData] = useState({});
   const toast = useToast();
-  const { web3, contract } = useWeb3();
+  const { web3, contract } = useWeb3(); // Accessing web3 and contract from the context
 
   const onFileChange = async (e) => {
     const file = e.target.files[0];
     try {
-      const added = await ipfs.add(file);
-      const ipfsHash = added.path;
-      setValue('ipfsHash', ipfsHash);
-      toast({
-        title: "File uploaded to IPFS.",
-        description: `CID: ${ipfsHash}`,
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const document = reader.result;
+
+        // Generate hash of the document
+        const messageHash = web3.utils.soliditySha3(document);
+
+        // Sign the hash
+        const accounts = await web3.eth.getAccounts();
+        const account = accounts[0];
+        const signature = await web3.eth.sign(messageHash, account);
+
+        // Define the MFS path
+        const MFS_path = `/files_${messageHash.replace("0x", "")}`;
+
+        // Store the signed document in IPFS at the specified MFS path
+        await ipfs.files.write(MFS_path, new TextEncoder().encode(signature), { create: true, parents: true });
+
+        // Retrieve the CID for the MFS path
+        const stat = await ipfs.files.stat(MFS_path);
+        const ipfsCid = stat.cid.toString();
+
+        setValue('ipfsCid', ipfsCid);
+
+        toast({
+          title: "File signed and uploaded to IPFS.",
+          description: `CID: ${ipfsCid}`,
+          status: "success",
+          duration: 5000,
+          isClosable: true,
+        });
+      };
+      reader.readAsText(file);
     } catch (error) {
-      console.error('Error uploading file: ', error);
-      toast({
-        title: "Error",
-        description: "There was an error uploading your file to IPFS.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    }
+      if (error.message.includes("User rejected the request")) {
+        toast({
+          title: "Transaction Rejected",
+          description: "You rejected the transaction request.",
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "There was an error creating your project.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } 
   };
 
   const onSubmit = async (data) => {
     setFormData(data);
-    console.log(data);
 
     try {
       const accounts = await web3.eth.getAccounts();
       const account = accounts[0];
-      const { ipfsHash, totalMilestones, totalPayment } = data;
+      const { ipfsCid, totalMilestones, totalPayment } = data;
 
-      await contract.methods.createProject(ipfsHash, totalMilestones, web3.utils.toWei(totalPayment.toString(), 'ether'))
+      // Call smart contract method to store the IPFS CID and project details
+      const receipt = await contract.methods.createProject(ipfsCid, totalMilestones, web3.utils.toWei(totalPayment.toString(), 'ether'))
         .send({ from: account, value: web3.utils.toWei(totalPayment.toString(), 'ether') });
 
       toast({
@@ -56,6 +89,8 @@ const CreateProject = () => {
         duration: 5000,
         isClosable: true,
       });
+
+      console.log("Transaction receipt: ", receipt);
     } catch (error) {
       console.error(error);
       toast({
@@ -71,7 +106,7 @@ const CreateProject = () => {
   return (
     <Box className="p-6 max-w-lg mx-auto bg-white shadow-md rounded-lg mt-10">
       <form onSubmit={handleSubmit(onSubmit)}>
-        <FormControl mb={4} isInvalid={errors.ipfsHash}>
+        <FormControl mb={4} isInvalid={errors.ipfsCid}>
           <FormLabel>Upload Document</FormLabel>
           <Input
             type="file"
@@ -80,9 +115,9 @@ const CreateProject = () => {
           />
           <Input
             type="hidden"
-            {...register('ipfsHash', { required: "IPFS Hash is required" })}
+            {...register('ipfsCid', { required: "IPFS CID is required" })}
           />
-          {errors.ipfsHash && <p className="text-red-500 text-xs mt-1">{errors.ipfsHash.message}</p>}
+          {errors.ipfsCid && <p className="text-red-500 text-xs mt-1">{errors.ipfsCid.message}</p>}
         </FormControl>
         <FormControl mb={4} isInvalid={errors.totalMilestones}>
           <FormLabel>Total Milestones</FormLabel>
