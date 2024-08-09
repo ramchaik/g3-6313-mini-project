@@ -15,7 +15,7 @@ export const Web3Provider = ({
 	const [web3, setWeb3] = useState(null);
 	const [contract, setContract] = useState(null);
 
-	const contractAddress = '0xD807EE45E98bb729bcC100c665D84e06C52ec38a';
+	const contractAddress = '0x0590d6e82c3Cb5BC1B1748773E60AFf57B1C59D2';
 	const contractABI = [
 		{
 			"inputs": [
@@ -26,6 +26,24 @@ export const Web3Provider = ({
 				}
 			],
 			"name": "acceptProjectContract",
+			"outputs": [],
+			"stateMutability": "nonpayable",
+			"type": "function"
+		},
+		{
+			"inputs": [
+				{
+					"internalType": "uint256",
+					"name": "_projectId",
+					"type": "uint256"
+				},
+				{
+					"internalType": "string",
+					"name": "_newIpfsCid",
+					"type": "string"
+				}
+			],
+			"name": "approveProgress",
 			"outputs": [],
 			"stateMutability": "nonpayable",
 			"type": "function"
@@ -62,19 +80,6 @@ export const Web3Provider = ({
 				}
 			],
 			"name": "deleteProject",
-			"outputs": [],
-			"stateMutability": "nonpayable",
-			"type": "function"
-		},
-		{
-			"inputs": [
-				{
-					"internalType": "uint256",
-					"name": "_projectId",
-					"type": "uint256"
-				}
-			],
-			"name": "milestoneComplete",
 			"outputs": [],
 			"stateMutability": "nonpayable",
 			"type": "function"
@@ -118,6 +123,12 @@ export const Web3Provider = ({
 					"internalType": "string",
 					"name": "newIpfsCid",
 					"type": "string"
+				},
+				{
+					"indexed": false,
+					"internalType": "uint256",
+					"name": "completedMilestones",
+					"type": "uint256"
 				}
 			],
 			"name": "ProgressUpdated",
@@ -193,24 +204,6 @@ export const Web3Provider = ({
 					"type": "string"
 				}
 			],
-			"name": "updateProgress",
-			"outputs": [],
-			"stateMutability": "nonpayable",
-			"type": "function"
-		},
-		{
-			"inputs": [
-				{
-					"internalType": "uint256",
-					"name": "_projectId",
-					"type": "uint256"
-				},
-				{
-					"internalType": "string",
-					"name": "_newIpfsCid",
-					"type": "string"
-				}
-			],
 			"name": "updateProject",
 			"outputs": [],
 			"stateMutability": "nonpayable",
@@ -265,6 +258,16 @@ export const Web3Provider = ({
 				{
 					"internalType": "string",
 					"name": "ipfsCid",
+					"type": "string"
+				},
+				{
+					"internalType": "string",
+					"name": "progressIpfsCid",
+					"type": "string"
+				},
+				{
+					"internalType": "string",
+					"name": "artIpfsCid",
 					"type": "string"
 				},
 				{
@@ -324,6 +327,16 @@ export const Web3Provider = ({
 							"type": "string"
 						},
 						{
+							"internalType": "string",
+							"name": "progressIpfsCid",
+							"type": "string"
+						},
+						{
+							"internalType": "string",
+							"name": "artIpfsCid",
+							"type": "string"
+						},
+						{
 							"internalType": "uint256",
 							"name": "totalMilestones",
 							"type": "uint256"
@@ -361,26 +374,26 @@ export const Web3Provider = ({
 			"inputs": [
 				{
 					"internalType": "bytes32",
-					"name": "messageHash",
+					"name": "_message",
 					"type": "bytes32"
 				},
 				{
 					"internalType": "uint8",
-					"name": "v",
+					"name": "_v",
 					"type": "uint8"
 				},
 				{
 					"internalType": "bytes32",
-					"name": "r",
+					"name": "_r",
 					"type": "bytes32"
 				},
 				{
 					"internalType": "bytes32",
-					"name": "s",
+					"name": "_s",
 					"type": "bytes32"
 				}
 			],
-			"name": "recoverSigner",
+			"name": "verify",
 			"outputs": [
 				{
 					"internalType": "address",
@@ -397,9 +410,29 @@ export const Web3Provider = ({
 					"internalType": "uint256",
 					"name": "_projectId",
 					"type": "uint256"
+				},
+				{
+					"internalType": "bytes32",
+					"name": "_message",
+					"type": "bytes32"
+				},
+				{
+					"internalType": "uint8",
+					"name": "_v",
+					"type": "uint8"
+				},
+				{
+					"internalType": "bytes32",
+					"name": "_r",
+					"type": "bytes32"
+				},
+				{
+					"internalType": "bytes32",
+					"name": "_s",
+					"type": "bytes32"
 				}
 			],
-			"name": "validateProgress",
+			"name": "verifyArtistSignature",
 			"outputs": [
 				{
 					"internalType": "bool",
@@ -419,26 +452,26 @@ export const Web3Provider = ({
 				},
 				{
 					"internalType": "bytes32",
-					"name": "messageHash",
+					"name": "_message",
 					"type": "bytes32"
 				},
 				{
 					"internalType": "uint8",
-					"name": "v",
+					"name": "_v",
 					"type": "uint8"
 				},
 				{
 					"internalType": "bytes32",
-					"name": "r",
+					"name": "_r",
 					"type": "bytes32"
 				},
 				{
 					"internalType": "bytes32",
-					"name": "s",
+					"name": "_s",
 					"type": "bytes32"
 				}
 			],
-			"name": "verifySignature",
+			"name": "verifyProposerSignature",
 			"outputs": [
 				{
 					"internalType": "bool",

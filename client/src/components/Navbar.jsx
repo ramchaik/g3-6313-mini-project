@@ -47,9 +47,6 @@ const Navbar = () => {
               ))}
             </HStack>
           </HStack>
-          <Flex alignItems={'center'}>
-            <NavLink path="/">Login</NavLink>
-          </Flex>
         </Flex>
 
         {isOpen ? (

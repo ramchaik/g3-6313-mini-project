@@ -21,7 +21,11 @@ contract CryptoArt {
     // Events
     event ProjectCreated(uint256 projectId, address proposer, string ipfsCid);
     event ProjectAccepted(uint256 projectId, address artist);
-    event ProgressUpdated(uint256 projectId, string newIpfsCid);
+    event ProgressUpdated(
+        uint256 projectId,
+        string newIpfsCid,
+        uint256 completedMilestones
+    );
     event MilestoneCompleted(
         uint256 projectId,
         uint256 milestoneNumber,
@@ -67,12 +71,18 @@ contract CryptoArt {
         uint256 _projectId,
         string memory _newIpfsCid
     ) public {
+        Project storage project = projects[_projectId];
         require(
-            msg.sender == projects[_projectId].proposer,
-            "Only proposer can update project"
+            msg.sender == project.artist,
+            "Only artist can update progress"
         );
-        projects[_projectId].ipfsCid = _newIpfsCid;
-        emit ProgressUpdated(_projectId, _newIpfsCid);
+        project.progressIpfsCid = _newIpfsCid;
+        project.completedMilestones++;
+        emit ProgressUpdated(
+            _projectId,
+            _newIpfsCid,
+            project.completedMilestones
+        );
     }
 
     // Function to delete a project
@@ -98,49 +108,21 @@ contract CryptoArt {
         emit ProjectAccepted(_projectId, msg.sender);
     }
 
-    // Function for the artist to update the progress of the project
-    function updateProgress(
+    function approveProgress(
         uint256 _projectId,
         string memory _newIpfsCid
     ) public {
         Project storage project = projects[_projectId];
         require(
-            msg.sender == project.artist,
-            "Only artist can update progress"
-        );
-
-        project.progressIpfsCid = _newIpfsCid;
-        emit ProgressUpdated(_projectId, _newIpfsCid);
-    }
-
-    function approveProgress(
-        uint256 _projectId,
-        string memory _newIpfsCid
-    ) public {
-        Project memory project = projects[_projectId];
-        require(
             msg.sender == project.proposer,
             "Only proposer can approve project"
         );
 
-        // Signed progress document by the proper
+        // Signed progress document by the proposer
         project.artIpfsCid = _newIpfsCid;
-
-        project.completedMilestones++;
-        uint256 payment = project.totalPayment / project.totalMilestones;
-        project.releasedPayment += payment;
-
-        payable(project.artist).transfer(payment);
-        emit MilestoneCompleted(
-            _projectId,
-            project.completedMilestones,
-            payment
-        );
-
-        if (project.completedMilestones == project.totalMilestones) {
-            project.isCompleted = true;
-            emit ProjectCompleted(_projectId);
-        }
+        payable(project.artist).transfer(project.totalPayment);
+        project.isCompleted = true;
+        emit ProjectCompleted(_projectId);
     }
 
     // Function to get the total number of projects
@@ -148,26 +130,47 @@ contract CryptoArt {
         return projectCount;
     }
 
-    // Function to recover the signer's address from the signature
-    function recoverSigner(
-        bytes32 messageHash,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+    /**
+     * @dev Verify encrypted data
+     * @param _message Hash of the message (h = web3.utils.soliditySha3(document))
+     * @param _v Recovery id (v = "0x" + signature.slice(130, 132); web3.utils.toDecimal(v); v + 27;)
+     * @param _r First 32 bytes of the signature (r = signature.slice(0, 66);)
+     * @param _s Second 32 bytes of the signature (s = "0x" + signature.slice(66, 130);)
+     */
+    function verify(
+        bytes32 _message,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
     ) public pure returns (address) {
-        return ecrecover(messageHash, v, r, s);
+        bytes memory prefix = "\x19Ethereum Signed Message:\n32";
+        bytes32 prefixedHash = keccak256(abi.encodePacked(prefix, _message));
+        address signer = ecrecover(prefixedHash, _v, _r, _s);
+        return signer;
     }
 
     // Function to verify the document signature by comparing the recovered address to the artist's address
-    function verifySignature(
+    function verifyArtistSignature(
         uint256 _projectId,
-        bytes32 messageHash,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+        bytes32 _message,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
     ) public view returns (bool) {
         Project memory project = projects[_projectId];
-        address recoveredAddress = ecrecover(messageHash, v, r, s);
+        address recoveredAddress = verify(_message, _v, _r, _s);
         return (recoveredAddress == project.artist);
+    }
+
+       function verifyProposerSignature(
+        uint256 _projectId,
+        bytes32 _message,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) public view returns (bool) {
+        Project memory project = projects[_projectId];
+        address recoveredAddress = verify(_message, _v, _r, _s);
+        return (recoveredAddress == project.proposer);
     }
 }

@@ -4,70 +4,57 @@ import { useForm } from 'react-hook-form';
 import { create } from 'ipfs-http-client';
 import { useWeb3 } from '../context/Web3Context';
 
-const ipfs = create({ url: 'http://127.0.0.1:5001' }); // Using local IPFS node
+const ipfs = create('http://127.0.0.1:5001'); // Initialize IPFS client
 
 const CreateProject = () => {
   const { register, handleSubmit, formState: { errors }, setValue } = useForm();
   const [formData, setFormData] = useState({});
   const toast = useToast();
-  const { web3, contract } = useWeb3(); // Accessing web3 and contract from the context
+  const { web3, contract } = useWeb3();
 
   const onFileChange = async (e) => {
     const file = e.target.files[0];
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const document = reader.result;
+    const reader = new FileReader();
 
-        // Generate hash of the document
-        const messageHash = web3.utils.soliditySha3(document);
+    reader.onload = async (event) => {
+      const fileContent = event.target.result;
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        // Convert to checksummed address
+        const checksummedAddress = web3.utils.toChecksumAddress(accounts[0]);
+        const hash = web3.utils.soliditySha3(fileContent);
 
-        // Sign the hash
-        const accounts = await web3.eth.getAccounts();
-        const account = accounts[0];
-        const signature = await web3.eth.sign(messageHash, account);
+        const signature = await web3.eth.sign(hash, checksummedAddress); // using ECDSA
 
-        // Define the MFS path
-        const MFS_path = `/files_${messageHash.replace("0x", "")}`;
+        const combinedBlob = new Blob([fileContent, new TextEncoder().encode(signature)]);
 
-        // Store the signed document in IPFS at the specified MFS path
-        await ipfs.files.write(MFS_path, new TextEncoder().encode(signature), { create: true, parents: true });
+        const { cid } = await ipfs.add(combinedBlob);
 
-        // Retrieve the CID for the MFS path
-        const stat = await ipfs.files.stat(MFS_path);
-        const ipfsCid = stat.cid.toString();
-
-        setValue('ipfsCid', ipfsCid);
+        setValue('ipfsCid', cid.toString());
 
         toast({
-          title: "File signed and uploaded to IPFS.",
-          description: `CID: ${ipfsCid}`,
+          title: "File uploaded to IPFS.",
+          description: `CID: ${cid}`,
           status: "success",
           duration: 5000,
           isClosable: true,
         });
-      };
-      reader.readAsText(file);
-    } catch (error) {
-      if (error.message.includes("User rejected the request")) {
-        toast({
-          title: "Transaction Rejected",
-          description: "You rejected the transaction request.",
-          status: "warning",
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        console.error(error);
+
+        // Additional logic for updating progress can go here
+
+      } catch (error) {
+        console.error('Error uploading file: ', error);
         toast({
           title: "Error",
-          description: "There was an error creating your project.",
+          description: "There was an error uploading your file to IPFS.",
           status: "error",
           duration: 5000,
           isClosable: true,
         });
       }
-    } 
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   const onSubmit = async (data) => {
@@ -78,8 +65,8 @@ const CreateProject = () => {
       const account = accounts[0];
       const { ipfsCid, totalMilestones, totalPayment } = data;
 
-      // Call smart contract method to store the IPFS CID and project details
-      const receipt = await contract.methods.createProject(ipfsCid, totalMilestones, web3.utils.toWei(totalPayment.toString(), 'ether'))
+      // Store the CID in the smart contract
+      await contract.methods.createProject(ipfsCid, totalMilestones, web3.utils.toWei(totalPayment.toString(), 'ether'))
         .send({ from: account, value: web3.utils.toWei(totalPayment.toString(), 'ether') });
 
       toast({
@@ -89,8 +76,6 @@ const CreateProject = () => {
         duration: 5000,
         isClosable: true,
       });
-
-      console.log("Transaction receipt: ", receipt);
     } catch (error) {
       console.error(error);
       toast({

@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text, Card, CardHeader, CardBody, CardFooter, Heading, Button, useToast } from '@chakra-ui/react';
+import { Box, Text, Table, Thead, Tbody, Tr, Th, Td, Button, ButtonGroup, useToast, Tooltip } from '@chakra-ui/react';
 import { useWeb3 } from '../context/Web3Context';
 import { create } from 'ipfs-http-client';
 import { Buffer } from 'buffer';
-// Initialize the IPFS client
-const ipfs = create({ url: 'http://127.0.0.1:5001' });
+import UpdateMilestoneDialog from '../components/UpdateMilestoneDialog';
+const ipfs = create('http://localhost:5001');
+const environment = process.env.REACT_APP_ENVIRONMENT; // Fetch the environment from .env
 
 const ProjectListings = () => {
   const { web3, contract } = useWeb3();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState(null);
+  const [view, setView] = useState('available'); // Default to 'available'
   const toast = useToast();
 
   useEffect(() => {
@@ -22,7 +24,7 @@ const ProjectListings = () => {
     };
 
     const fetchProjects = async () => {
-      if (contract) {
+      if (contract && environment === 'eth') {
         try {
           const projectCount = await contract.methods.getProjectCount().call();
           const projectArray = [];
@@ -40,6 +42,12 @@ const ProjectListings = () => {
         } finally {
           setLoading(false);
         }
+      } else if (environment === 'hlf') {
+        console.log("HLF: Simulating fetching projects.");
+        setProjects([
+          { id: 1, proposer: '0xProposer', artist: '0xArtist', ipfsCid: 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDdcc9v9ieT1d', progressIpfsCid: 'QmYoypizjW3WknFiJnKLwHCnL72vedxjQkDdcc9v9ieT1e', artIpfsCid: 'QmZoypizjW3WknFiJnKLwHCnL72vedxjQkDdcc9v9ieT1f', totalMilestones: 5, completedMilestones: 3, isCompleted: false },
+        ]);
+        setLoading(false);
       }
     };
 
@@ -49,54 +57,155 @@ const ProjectListings = () => {
     }
   }, [contract, web3]);
 
-  const handleVerify = async (project) => {
-    try {
-      const ipfsCid = project.ipfsCid;
-
-      // Fetch the signature from IPFS
-      const resp = await ipfs.cat(ipfsCid);
-      let content = [];
-      let raw = "";
-
-      for await (const chunk of resp) {
-        content = [...content, ...chunk];
-        raw = Buffer.from(content).toString('utf8');
-      }
-
-      // Extract r, s, v from the signature
-      const r = raw.slice(0, 66); // First 66 characters including '0x'
-      const s = "0x" + raw.slice(66, 130); // Next 64 characters
-      let v = "0x" + raw.slice(130, 132); // Final 2 characters
-      v = web3.utils.toDecimal(v) + 27; // Convert v to a decimal and adjust
-
-      // Recreate the message hash
-      const messageHash = web3.utils.soliditySha3(project.ipfsCid);
-
-      // Call the verifySignature function in the contract
-      const isValid = await contract.methods.verifySignature(project.id, messageHash, v, r, s).call();
-
-      if (isValid) {
+  const downloadFromIPFS = async (cid, filename) => {
+    if (environment === 'eth') {
+      try {
+        const chunks = [];
+        for await (const chunk of ipfs.cat(cid)) {
+          chunks.push(chunk);
+        }
+        const blob = new Blob(chunks, { type: 'application/pdf' }); // Assuming the file is a PDF
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'downloaded_file.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Error downloading from IPFS:', error);
         toast({
-          title: "Verification successful.",
-          description: "The document is verified with the artist's ID.",
-          status: "success",
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        toast({
-          title: "Verification failed.",
-          description: "The document does not match the artist's signature.",
+          title: "Download Error",
+          description: "There was an error downloading the file from IPFS.",
           status: "error",
           duration: 5000,
           isClosable: true,
         });
       }
+    } else if (environment === 'hlf') {
+      console.log(`HLF: Simulating download of file with CID ${cid} and filename ${filename}`);
+      // Simulate download logic for Hyperledger Fabric environment
+    }
+  };
+
+
+
+  const handleVerify = async (project, cid, type) => {
+    if (environment === 'eth') {
+      try {
+        // Fetch the signed PDF from IPFS
+        const chunks = [];
+        for await (const chunk of ipfs.cat(cid)) {
+          chunks.push(chunk);
+        }
+        const signedFile = new Uint8Array(Buffer.concat(chunks));
+
+        // Extract the original file content and the signature
+        const fileContent = signedFile.slice(0, signedFile.length - 132); // PDF content
+        const signatureHex = Buffer.from(signedFile.slice(signedFile.length - 132)).toString('hex'); // Extract signature as hex string
+
+        // Extract r, s, v from the signature
+        const r = "0x" + signatureHex.slice(0, 64); // First 64 characters (32 bytes)
+        const s = "0x" + signatureHex.slice(64, 128); // Next 64 characters (32 bytes)
+        let v = "0x" + signatureHex.slice(128, 130); // Final 2 characters (1 byte)
+
+        // Web3 expects v as a number, so convert it correctly
+        v = web3.utils.hexToNumber(v);
+        if (v < 27) {
+          v += 27; // Adjusting v to be in the correct range (27 or 28)
+        }
+
+        // Recreate the message hash from the file content
+        const messageHash = web3.utils.soliditySha3({ t: 'bytes', v: fileContent });
+
+        console.log("Project ID:", project.id);
+        console.log("Message Hash:", messageHash);
+        console.log("v:", v);
+        console.log("r:", r);
+        console.log("s:", s);
+        let isValid;
+        // Call the verifySignature function in the contract
+        if (type === 'proposer') {
+          isValid = await contract.methods.verifyProposerSignature(project.id, messageHash, v, r, s).call();
+        }
+        else {
+          isValid = await contract.methods.verifyArtistSignature(project.id, messageHash, v, r, s).call();
+
+        }
+        if (isValid) {
+          toast({
+            title: "Verification successful.",
+            description: "The document is verified and signed by the author.",
+            status: "success",
+            duration: 5000,
+            isClosable: true,
+          });
+        } else {
+          toast({
+            title: "Verification failed.",
+            description: "The document does not match the artist's signature.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+        }
+      } catch (error) {
+        console.error("Error verifying document:", error);
+        toast({
+          title: "Error",
+          description: "There was an error verifying the document.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } else if (environment === 'hlf') {
+      console.log(`HLF: Simulating verification for project ${project.id}`);
+    }
+  };
+
+
+
+  const handleUpdateProgress = async (projectId, newIpfsCid) => {
+    console.log(projectId, newIpfsCid)
+    try {
+      const accounts = await web3.eth.getAccounts();
+      const account = accounts[0];
+
+      // Call the smart contract method to update the project progress
+      const receipt = await contract.methods.updateProject(projectId, newIpfsCid).send({ from: account });
+
+      // Extract the completedMilestones value from the emitted event
+      const completedMilestones = receipt.events.ProgressUpdated.returnValues.completedMilestones;
+
+      // Provide feedback to the user
+      toast({
+        title: "Progress updated.",
+        description: "The project progress has been successfully updated.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+
+      // Update the project progress in local data
+      setProjects((prevProjects) =>
+        prevProjects.map((project) => {
+          if (project.id === projectId) {
+            return {
+              ...project,
+              progressIpfsCid: newIpfsCid,
+              completedMilestones, // Directly set the completedMilestones from the event
+            };
+          }
+          return project;
+        })
+      );
     } catch (error) {
-      console.error("Error verifying document:", error);
+      console.error("Error updating progress:", error);
       toast({
         title: "Error",
-        description: "There was an error verifying the document.",
+        description: "There was an error updating the project progress.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -104,9 +213,53 @@ const ProjectListings = () => {
     }
   };
 
+
+  const handleCompleteProject = async (projectId, ipfsCid) => {
+    if (environment === 'eth') {
+      try {
+        await contract.methods.approveProgress(projectId, ipfsCid).send({ from: account });
+        toast({
+          title: "Project Completed",
+          description: "The project has been successfully completed.",
+          status: "success",
+          duration: 5000,
+          isClosable: true,
+        });
+        // Update the project status to completed in local state
+        setProjects((prevProjects) =>
+          prevProjects.map((project) =>
+            project.id === projectId ? { ...project, isCompleted: true } : project
+          )
+        );
+      } catch (error) {
+        console.error("Error completing project:", error);
+        toast({
+          title: "Error",
+          description: "There was an error completing the project.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } else if (environment === 'hlf') {
+      console.log(`HLF: Simulating completion of project ${projectId}`);
+      setProjects((prevProjects) =>
+        prevProjects.map((project) =>
+          project.id === projectId ? { ...project, isCompleted: true } : project
+        )
+      );
+    }
+  };
+
   const handleAccept = async (projectId) => {
     try {
+      const accounts = await web3.eth.getAccounts();
+      const account = accounts[0];
+
+      // Call the smart contract method to accept the project
       await contract.methods.acceptProjectContract(projectId).send({ from: account });
+
+      // Provide feedback to the user
       toast({
         title: "Project accepted.",
         description: "You have successfully accepted the project.",
@@ -114,7 +267,13 @@ const ProjectListings = () => {
         duration: 5000,
         isClosable: true,
       });
-      // Optionally refresh the projects list
+
+      // Optionally, update the project status in local data (e.g., move it to the "In Progress" section)
+      setProjects((prevProjects) =>
+        prevProjects.map((project) =>
+          project.id === projectId ? { ...project, artist: account } : project
+        )
+      );
     } catch (error) {
       console.error("Error accepting project:", error);
       toast({
@@ -127,6 +286,21 @@ const ProjectListings = () => {
     }
   };
 
+
+  const filteredProjects = projects.filter((project) => {
+    if (view === 'available') {
+      return !project.isCompleted && project.artist === '0x0000000000000000000000000000000000000000';
+    }
+    if (view === 'inProgress') {
+      return !project.isCompleted && project.artist !== '0x0000000000000000000000000000000000000000' &&
+        (project.proposer === account || project.artist === account);
+    }
+    if (view === 'completed') {
+      return project.isCompleted;
+    }
+    return false;
+  });
+
   if (loading) {
     return <Text>Loading...</Text>;
   }
@@ -137,38 +311,153 @@ const ProjectListings = () => {
 
   return (
     <Box p={6} w={["100%", "100%", "100%", "100%"]}>
-      <div className='flex flex-col items-center justify-center'>
-        {projects.map((project) => (
-          <Card key={project.id} borderWidth="1px" borderRadius="lg" overflow="hidden">
-            <CardHeader>
-              <Heading size="md">Project ID: {project.id}</Heading>
-            </CardHeader>
-            <CardBody>
-              <Text><strong>Proposer:</strong> {project.proposer}</Text>
-              <Text><strong>Artist:</strong> {project.artist}</Text>
-              <Text><strong>IPFS Hash:</strong> {project.ipfsHash}</Text>
-              <Text><strong>Total Milestones:</strong> {project.totalMilestones}</Text>
-              <Text><strong>Completed Milestones:</strong> {project.completedMilestones}</Text>
-              <Text><strong>Total Payment:</strong> {web3.utils.fromWei(project.totalPayment, 'ether')} ETH</Text>
-              <Text><strong>Released Payment:</strong> {web3.utils.fromWei(project.releasedPayment, 'ether')} ETH</Text>
-              <Text><strong>Is Completed:</strong> {project.isCompleted ? 'Yes' : 'No'}</Text>
-            </CardBody>
-            <CardFooter>
-              {/* Buttons visible only if the current account is not the proposer */}
-              {account !== project.proposer && (
-                <>
-                  <Button colorScheme="teal" mr={3} onClick={() => handleVerify(project)}>
-                    Verify
+      <ButtonGroup variant="outline" spacing="6" mb="6">
+        <Button
+          colorScheme={view === 'available' ? 'blue' : 'gray'}
+          onClick={() => setView('available')}
+        >
+          Available Projects
+        </Button>
+        <Button
+          colorScheme={view === 'inProgress' ? 'blue' : 'gray'}
+          onClick={() => setView('inProgress')}
+        >
+          In Progress
+        </Button>
+        <Button
+          colorScheme={view === 'completed' ? 'blue' : 'gray'}
+          onClick={() => setView('completed')}
+        >
+          Completed
+        </Button>
+      </ButtonGroup>
+      <Table variant="simple" size="sm">
+        <Thead>
+          <Tr>
+            <Th>Project ID</Th>
+            <Th width="20%">Proposer</Th>
+            <Th width="20%">Artist</Th>
+            <Th>IPFS File</Th>
+            {view === 'inProgress' && <Th>Progress IPFS File</Th>}
+            {view === 'completed' && <Th>Art IPFS File</Th>}
+            <Th>Total Milestones</Th>
+            <Th>Completed Milestones</Th>
+            <Th>Actions</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {filteredProjects.map((project) => (
+            <Tr key={project.id}>
+              <Td>{project.id}</Td>
+              <Td>
+                <Tooltip label={project.proposer} fontSize="md">
+                  <Text isTruncated maxW="150px">
+                    {project.proposer}
+                  </Text>
+                </Tooltip>
+              </Td>
+              <Td>
+                <Tooltip label={project.artist} fontSize="md">
+                  <Text isTruncated maxW="150px">
+                    {project.artist}
+                  </Text>
+                </Tooltip>
+              </Td>
+              <Td>
+                <Button
+                  colorScheme="blue"
+                  size="xs"
+                  onClick={() => downloadFromIPFS(project.ipfsCid, `project_${project.id}_initial.pdf`)}
+                >
+                  Download
+                </Button>
+              </Td>
+              {view === 'inProgress' && (
+                <Td>
+                  <Button
+                    colorScheme="blue"
+                    size="xs"
+                    onClick={() => downloadFromIPFS(project.progressIpfsCid, `project_${project.id}_progress.pdf`)}
+                  >
+                    Download Progress
                   </Button>
-                  <Button colorScheme="blue" onClick={() => handleAccept(project.id)}>
-                    Accept
-                  </Button>
-                </>
+                </Td>
               )}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+              {view === 'completed' && (
+                <Td>
+                  <Button
+                    colorScheme="blue"
+                    size="xs"
+                    onClick={() => downloadFromIPFS(project.artIpfsCid, `project_${project.id}_art.pdf`)}
+                  >
+                    Download Art
+                  </Button>
+                </Td>
+              )}
+              <Td>{project.totalMilestones.toString()}</Td>
+              <Td>{project.completedMilestones.toString()}</Td>
+              <Td>
+                {view === 'available' && (
+                  <>
+                    <Button
+                      colorScheme="blue"
+                      size="xs"
+                      onClick={() => handleVerify(project, project.ipfsCid, 'proposer')}
+                      className='mr-1'
+                    >
+                      Verify Proposal Document
+                    </Button>
+                    {account !== project.proposer && (
+                      <Button colorScheme="teal" size="xs" onClick={() => handleAccept(project.id)}>
+                        Accept Proposal
+                      </Button>
+                    )}
+                  </>
+                )}
+                {view === 'inProgress' && (
+                  <>
+                    {account === project.artist && (
+                      project.totalMilestones === project.completedMilestones ? <Text>Under Review</Text> :
+                        <UpdateMilestoneDialog projectId={project.id} onSubmit={handleUpdateProgress} />
+                    )}
+                    {account === project.proposer && (
+                      <>
+                        <Button
+                          colorScheme="teal"
+                          size="xs"
+                          onClick={() => handleVerify(project, project.progressIpfsCid, 'artist')}
+                          className='mr-1'
+                        >
+                          Verify Progress Document
+                        </Button>
+                        {project.completedMilestones === project.totalMilestones && (
+                          <Button
+                            colorScheme="blue"
+                            size="xs"
+                            onClick={() => handleCompleteProject(project.id, project.progressIpfsCid)}
+                          >
+                            Complete Project
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+                {view === 'completed' && (
+                  <Button
+                    colorScheme="teal"
+                    size="xs"
+                    onClick={() => handleVerify(project, project.artIpfsCid, 'artist')}
+                  >
+                    Verify Artist Signature
+                  </Button>
+                )}
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+
     </Box>
   );
 };
