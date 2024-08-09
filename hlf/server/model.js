@@ -68,10 +68,28 @@ async function getAllProjects() {
   }
 }
 
+async function verifyProjectSignature(projectId, message, signature, publicKey) {
+  let contract = await getActorConnection();
+  try {
+    const isVerifiedBuffer = await contract.evaluateTransaction(
+      "verifySignature",
+      projectId,
+      message,
+      signature,
+      publicKey
+    );
+    const isVerified = parseBuffer(isVerifiedBuffer);
+    return isVerified;
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   createProject,
   updateProject,
   readProject,
   deleteProject,
   getAllProjects,
+  verifyProjectSignature,
 };

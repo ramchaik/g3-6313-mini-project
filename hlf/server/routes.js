@@ -54,6 +54,17 @@ function registerRoutes(app, opts, done) {
     }
   });
 
+  app.post("/project/:id/verify-signature", async (request, reply) => {
+    const id = request.params.id;
+    const { message, signature, publicKey } = request.body;
+    try {
+      const isVerified = await model.verifyProjectSignature(id, message, signature, publicKey);
+      reply.send({ verified: isVerified });
+    } catch (error) {
+      reply.code(500).send({ error: error.message });
+    }
+  });
+
   done();
 }
 

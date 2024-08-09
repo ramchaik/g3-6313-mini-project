@@ -5,6 +5,7 @@
 'use strict';
 
 const { Contract } = require('fabric-contract-api');
+const crypto = require('crypto');
 
 class ProjectContract extends Contract {
     async projectExists(ctx, projectId) {
@@ -68,6 +69,28 @@ class ProjectContract extends Contract {
             const asset = JSON.parse(value);
             allResults.push(Object.assign({ key }, asset));
         }
+    }
+
+    async verifySignature(ctx, projectId, message, signature, publicKey) {
+        const exists = await this.projectExists(ctx, projectId);
+        if (!exists) {
+            throw new Error(`The project ${projectId} does not exist`);
+        }
+
+        // Retrieve the project
+        const buffer = await ctx.stub.getState(projectId);
+        const project = JSON.parse(buffer.toString());
+
+        // Create a verifier object
+        const verifier = crypto.createVerify('SHA256');
+        verifier.update(message);
+        verifier.end();
+
+        // Verify the signature
+        const isVerified = verifier.verify(publicKey, signature, 'hex');
+
+        // Check if the recovered address matches the artist's address
+        return isVerified && project.artist === publicKey;
     }
 }
 
