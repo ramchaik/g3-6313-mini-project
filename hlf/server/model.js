@@ -6,7 +6,7 @@ async function createProject(id, value) {
     await contract.submitTransaction(
       "createProject",
       id,
-      JSON.stringify(Object.assign(value, {id: id}))
+      JSON.stringify(Object.assign(value, { id: id }))
     );
     return `Asset ${id} was successfully created!`;
   } catch (error) {
@@ -17,7 +17,11 @@ async function createProject(id, value) {
 async function updateProject(id, value) {
   let contract = await getActorConnection();
   try {
-    await contract.submitTransaction("updateProject", id, value);
+    await contract.submitTransaction(
+      "updateProject",
+      id,
+      JSON.stringify(Object.assign(value, { id: id }))
+    );
     return `Asset ${id} was successfully updated!`;
   } catch (error) {
     throw error;
@@ -28,8 +32,8 @@ async function readProject(id) {
   let contract = await getActorConnection();
   try {
     const projectBuffer = await contract.evaluateTransaction("readProject", id);
-    const project = parseBuffer(projectBuffer)
-    return project.value
+    const project = parseBuffer(projectBuffer);
+    return project.value;
   } catch (error) {
     throw error;
   }
@@ -46,19 +50,36 @@ async function deleteProject(id) {
 }
 
 function parseBuffer(projectBuffer) {
-    const decoder = new TextDecoder("utf-8");
-    const decodedStr = decoder.decode(projectBuffer);
-    return JSON.parse(decodedStr);
+  const decoder = new TextDecoder("utf-8");
+  const decodedStr = decoder.decode(projectBuffer);
+  return JSON.parse(decodedStr);
 }
 
 async function getAllProjects() {
   let contract = await getActorConnection();
   try {
     const projectsBuffer = await contract.submitTransaction("getAllProjects");
-    const projects = parseBuffer(projectsBuffer)
+    const projects = parseBuffer(projectsBuffer);
     return projects.map((project) => {
       return JSON.parse(project.value);
     });
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function verifyProjectSignature(projectId, message, signature, publicKey) {
+  let contract = await getActorConnection();
+  try {
+    const isVerifiedBuffer = await contract.evaluateTransaction(
+      "verifySignature",
+      projectId,
+      message,
+      signature,
+      publicKey
+    );
+    const isVerified = parseBuffer(isVerifiedBuffer);
+    return isVerified;
   } catch (error) {
     throw error;
   }
@@ -70,4 +91,5 @@ module.exports = {
   readProject,
   deleteProject,
   getAllProjects,
+  verifyProjectSignature,
 };
